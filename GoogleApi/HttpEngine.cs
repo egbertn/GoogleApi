@@ -16,10 +16,10 @@ namespace GoogleApi
     /// <summary>
     /// Http Engine (abstract).
     /// </summary>
-    public abstract class HttpEngine : IDisposable
+    public abstract class HttpEngine
     {
         private static HttpClient httpClient;
-        private static readonly TimeSpan httpTimeout = new TimeSpan(0, 0, 30);
+        private static readonly TimeSpan httpTimeout = TimeSpan.FromSeconds(30);
 
         /// <summary>
         /// Http Client.
@@ -61,27 +61,7 @@ namespace GoogleApi
         /// </summary>
         public static IWebProxy Proxy { get; set; }
 
-        /// <summary>
-        /// Disposes.
-        /// </summary>
-        public virtual void Dispose()
-        {
-            this.Dispose(true);
-            GC.SuppressFinalize(this);
-        }
 
-        /// <summary>
-        /// Disposes of the <see cref="HttpClient"/>, if <paramref name="disposing"/> is true.
-        /// </summary>
-        /// <param name="disposing">Whether to dispose resources or not.</param>
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!disposing)
-                return;
-
-            HttpEngine.HttpClient?.Dispose();
-            HttpEngine.httpClient = null;
-        }
     }
 
     /// <summary>
@@ -101,15 +81,15 @@ namespace GoogleApi
         /// </summary>
         /// <param name="request">The request that will be sent.</param>
         /// <returns>The <see cref="IResponse"/>.</returns>
-        public TResponse Query(TRequest request)
+        public async Task<TResponse> Query(TRequest request)
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
 
             try
             {
-                var result = this.ProcessRequest(request);
-                var response = this.ProcessResponse(result);
+                var result = await this.ProcessRequest(request);
+                var response = await this.ProcessResponse(result);
 
                 switch (response.Status)
                 {
@@ -146,57 +126,46 @@ namespace GoogleApi
 
             var taskCompletion = new TaskCompletionSource<TResponse>();
 
-            await this.ProcessRequestAsync(request, cancellationToken)
-                .ContinueWith(async x =>
+            var result = await this.ProcessRequestAsync(request, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
+			{
+                return default;
+			}
+            try
+            {
+                var response = await this.ProcessResponseAsync(result);
+
+                switch (response.Status)
                 {
-                    try
-                    {
-                        if (x.IsCanceled)
-                        {
-                            taskCompletion.SetCanceled();
-                        }
-                        else if (x.IsFaulted)
-                        {
-                            throw x.Exception ?? new Exception();
-                        }
-                        else
-                        {
-                            var result = await x;
-                            var response = await this.ProcessResponseAsync(result).ConfigureAwait(false);
+                    case Status.Ok:
+                    case Status.ZeroResults:
+                        taskCompletion.SetResult(response);
+                        break;
 
-                            switch (response.Status)
-                            {
-                                case Status.Ok:
-                                case Status.ZeroResults:
-                                    taskCompletion.SetResult(response);
-                                    break;
+                    default:
+                        throw new GoogleApiException($"{response.Status}: {response.ErrorMessage}");
+                }
 
-                                default:
-                                    throw new GoogleApiException($"{response.Status}: {response.ErrorMessage}");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        if (ex is GoogleApiException)
-                        {
-                            taskCompletion.SetException(ex);
-                        }
-                        else
-                        {
-                            var baseException = ex.GetBaseException();
-                            var exception = new GoogleApiException(baseException.Message, baseException);
+            }
+            catch (Exception ex)
+            {
+                if (ex is GoogleApiException)
+                {
+                    taskCompletion.SetException(ex);
+                }
+                else
+                {
+                    var baseException = ex.GetBaseException();
+                    var exception = new GoogleApiException(baseException.Message, baseException);
 
-                            taskCompletion.SetException(exception);
-                        }
-                    }
-                }, cancellationToken)
-                .ConfigureAwait(false);
+                    taskCompletion.SetException(exception);
+                }
+            }
 
-            return await taskCompletion.Task;
+            return default;
         }
 
-        private HttpResponseMessage ProcessRequest(TRequest request)
+        private async Task<HttpResponseMessage> ProcessRequest(TRequest request)
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
@@ -205,7 +174,7 @@ namespace GoogleApi
 
             if (request is IRequestQueryString)
             {
-                return HttpEngine.HttpClient.GetAsync(uri).Result;
+                return await HttpEngine.HttpClient.GetAsync(uri);
             }
 
             var settings = new JsonSerializerSettings
@@ -217,11 +186,11 @@ namespace GoogleApi
 
             using (var stringContent = new StringContent(serializeObject, Encoding.UTF8))
             {
-                var content = stringContent.ReadAsStreamAsync().Result;
+                var content = await stringContent.ReadAsStreamAsync();
 
                 using (var streamContent = new StreamContent(content))
                 {
-                    return HttpEngine.HttpClient.PostAsync(uri, streamContent).Result;
+                    return await HttpEngine.HttpClient.PostAsync(uri, streamContent);
                 }
             }
         }
@@ -234,7 +203,7 @@ namespace GoogleApi
 
             if (request is IRequestQueryString)
             {
-                return await HttpEngine.HttpClient.GetAsync(uri, cancellationToken).ConfigureAwait(false);
+                return await HttpEngine.HttpClient.GetAsync(uri, cancellationToken);
             }
 
             var settings = new JsonSerializerSettings
@@ -246,7 +215,7 @@ namespace GoogleApi
 
             using (var stringContent = new StringContent(serializeObject, Encoding.UTF8))
             {
-                var content = await stringContent.ReadAsStreamAsync().ConfigureAwait(false);
+                var content = await stringContent.ReadAsStreamAsync();
 
                 using (var streamContent = new StreamContent(content))
                 {
@@ -254,7 +223,7 @@ namespace GoogleApi
                 }
             }
         }
-        private TResponse ProcessResponse(HttpResponseMessage httpResponse)
+        private async Task<TResponse> ProcessResponse(HttpResponseMessage httpResponse)
         {
             if (httpResponse == null)
                 throw new ArgumentNullException(nameof(httpResponse));
@@ -268,12 +237,12 @@ namespace GoogleApi
                 switch (response)
                 {
                     case BaseResponseStream streamResponse:
-                        streamResponse.Buffer = httpResponse.Content.ReadAsByteArrayAsync().Result;
+                        streamResponse.Buffer = await httpResponse.Content.ReadAsByteArrayAsync();
                         response = (TResponse)(IResponse)streamResponse;
                         break;
 
                     default:
-                        var rawJson = httpResponse.Content.ReadAsStringAsync().Result;
+                        var rawJson = await httpResponse.Content.ReadAsStringAsync();
                         response = JsonConvert.DeserializeObject<TResponse>(rawJson);
                         response.RawJson = rawJson;
                         break;
