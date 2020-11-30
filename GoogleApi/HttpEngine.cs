@@ -168,10 +168,10 @@ namespace GoogleApi
                 {
                     await Task.Delay(350);
                 }
-            } while (retry && tryIt++ < 3);
-            if(tryIt == 3)
+            } while (retry && tryIt++ < 6);
+            if(tryIt == 6)
 			{
-                throw new GoogleApiException("Tried 3 times");
+                throw new GoogleApiException("Tried 6 times");
             }
             return default;
         }
