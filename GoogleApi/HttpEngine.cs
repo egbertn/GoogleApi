@@ -124,7 +124,7 @@ namespace GoogleApi
             if (cancellationToken == null)
                 throw new ArgumentNullException(nameof(cancellationToken));
             int tryIt = 0;
-            bool retry = true;
+            bool retry = false;
             do
             {
                 var result = await this.ProcessRequestAsync(request, cancellationToken);
