@@ -182,10 +182,10 @@ namespace GoogleApi
                 throw new ArgumentNullException(nameof(request));
 
             var uri = request.GetUri();
-
+            using var httpClient = HttpClient;
             if (request is IRequestQueryString)
             {
-                return await HttpEngine.HttpClient.GetAsync(uri);
+                return await httpClient.GetAsync(uri);
             }
 
             var settings = new JsonSerializerSettings
@@ -199,7 +199,7 @@ namespace GoogleApi
 			var content = await stringContent.ReadAsStreamAsync();
 
 			using var streamContent = new StreamContent(content);
-			return await HttpEngine.HttpClient.PostAsync(uri, streamContent);
+			return await httpClient.PostAsync(uri, streamContent);
 		}
         private async Task<HttpResponseMessage> ProcessRequestAsync(TRequest request, CancellationToken cancellationToken = default)
         {
@@ -207,10 +207,10 @@ namespace GoogleApi
                 throw new ArgumentNullException(nameof(request));
 
             var uri = request.GetUri();
-
+            using var httpClient = HttpClient;
             if (request is IRequestQueryString)
             {
-                return await HttpEngine.HttpClient.GetAsync(uri, cancellationToken);
+                return await httpClient.GetAsync(uri, cancellationToken);
             }
 
             var settings = new JsonSerializerSettings
@@ -223,7 +223,7 @@ namespace GoogleApi
             using var stringContent = new StringContent(serializeObject, Encoding.UTF8);
             using var content = await stringContent.ReadAsStreamAsync();
             using var streamContent = new StreamContent(content);
-            return await HttpEngine.HttpClient.PostAsync(uri, streamContent, cancellationToken);
+            return await httpClient.PostAsync(uri, streamContent, cancellationToken);
         }
         private async Task<TResponse> ProcessResponse(HttpResponseMessage httpResponse)
         {
