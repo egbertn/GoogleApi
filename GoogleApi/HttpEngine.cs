@@ -81,15 +81,15 @@ namespace GoogleApi
         /// </summary>
         /// <param name="request">The request that will be sent.</param>
         /// <returns>The <see cref="IResponse"/>.</returns>
-        public async Task<TResponse> Query(TRequest request)
+        public TResponse Query(TRequest request)
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request));
 
             try
             {
-                var result = await this.ProcessRequest(request);
-                var response = await this.ProcessResponse(result);
+                var result =  this.ProcessRequest(request).Result;
+                var response =  this.ProcessResponse(result).Result;
 
                 switch (response.Status)
                 {
