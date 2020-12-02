@@ -88,7 +88,7 @@ namespace GoogleApi
 
             try
             {
-                var result =  this.ProcessRequest(request).Result;
+                using var result =  this.ProcessRequest(request).Result;
                 var response =  this.ProcessResponse(result).Result;
 
                 switch (response.Status)
@@ -127,7 +127,7 @@ namespace GoogleApi
             bool retry = false;
             do
             {
-                var result = await this.ProcessRequestAsync(request, cancellationToken);
+                using var result = await this.ProcessRequestAsync(request, cancellationToken);
                 if (cancellationToken.IsCancellationRequested)
                 {
                     return default;
