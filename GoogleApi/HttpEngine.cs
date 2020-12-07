@@ -123,57 +123,40 @@ namespace GoogleApi
 
             if (cancellationToken == null)
                 throw new ArgumentNullException(nameof(cancellationToken));
-            int tryIt = 0;
-            bool retry = false;
-            do
+
+            using var result = await this.ProcessRequestAsync(request, cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
             {
-                using var result = await this.ProcessRequestAsync(request, cancellationToken);
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    return default;
-                }
-                try
-                {
-                    TResponse response = await this.ProcessResponseAsync(result);
-
-                    switch (response.Status)
-                    {
-                        case Status.InvalidRequest:
-                            retry = true;
-                            // can also be paging token too quickly given
-                            break;
-                        case Status.Ok:
-                        case Status.ZeroResults:
-                            return response;
-
-                        default:
-                            throw new GoogleApiException($"{response.Status}: {response.ErrorMessage}");
-                    }
-
-                }
-                catch (Exception ex)
-                {
-                    if (ex is GoogleApiException)
-                    {
-                        throw;
-                    }
-                    else
-                    {
-                        var baseException = ex.GetBaseException();
-                        throw new GoogleApiException(baseException.Message, baseException);
-
-                    }
-                }
-                if (retry)
-                {
-                    await Task.Delay(350);
-                }
-            } while (retry && tryIt++ < 6);
-            if(tryIt == 6)
-			{
-                throw new GoogleApiException("Tried 6 times");
+                return default;
             }
-            return default;
+            try
+            {
+                TResponse response = await this.ProcessResponseAsync(result);
+
+                switch (response.Status)
+                {
+                    case Status.Ok:
+                    case Status.ZeroResults:
+                        return response;
+
+                    default:
+                        throw new GoogleApiException($"{response.Status}: {response.ErrorMessage}");
+                }
+
+            }
+            catch (Exception ex)
+            {
+                if (ex is GoogleApiException)
+                {
+                    throw;
+                }
+                else
+                {
+                    var baseException = ex.GetBaseException();
+                    throw new GoogleApiException(baseException.Message, baseException);
+
+                }
+            }
         }
 
         private async Task<HttpResponseMessage> ProcessRequest(TRequest request)
